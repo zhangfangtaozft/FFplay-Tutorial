@@ -128,7 +128,7 @@ static NSMutableDictionary * gHistory;
     CGFloat             _minBufferedDuration;
     CGFloat             _maxBufferedDuration;
     BOOL                _buffered;
-    
+   //是否锁屏
     BOOL                _savedIdleTimer;
     
     NSDictionary        *_parameters;
@@ -236,7 +236,7 @@ static NSMutableDictionary * gHistory;
     _messageLabel = [[UILabel alloc] initWithFrame:CGRectMake(20,40,width-40,40)];
     _messageLabel.backgroundColor = [UIColor clearColor];
     _messageLabel.textColor = [UIColor redColor];
-_messageLabel.hidden = YES;
+    _messageLabel.hidden = YES;
     _messageLabel.font = [UIFont systemFontOfSize:14];
     _messageLabel.numberOfLines = 2;
     _messageLabel.textAlignment = NSTextAlignmentCenter;
@@ -406,7 +406,7 @@ _messageLabel.hidden = YES;
     
     if (_infoMode)
         [self showInfoView:NO animated:NO];
-    
+    //阻止屏幕设备锁屏
     _savedIdleTimer = [[UIApplication sharedApplication] isIdleTimerDisabled];
     
     [self showHUD: YES];
@@ -452,17 +452,19 @@ _messageLabel.hidden = YES;
     [[UIApplication sharedApplication] setIdleTimerDisabled:_savedIdleTimer];
     
     [_activityIndicatorView stopAnimating];
+    //当当前界面不可见的时候，需要进行如下参数的设置。
     _buffered = NO;
     _interrupted = YES;
     
     LoggerStream(1, @"viewWillDisappear %@", self);
 }
-
+//设置屏幕方向的变化->响应的应用的屏幕旋转通知方法。
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)interfaceOrientation
 {
     return (interfaceOrientation != UIInterfaceOrientationPortraitUpsideDown);
 }
 
+//WillResignActive通知方法
 - (void) applicationWillResignActive: (NSNotification *)notification
 {
     [self showHUD:YES];
@@ -472,7 +474,7 @@ _messageLabel.hidden = YES;
 }
 
 #pragma mark - gesture recognizer
-
+//屏幕手势相关处理
 - (void) handleTap: (UITapGestureRecognizer *) sender
 {
     if (sender.state == UIGestureRecognizerStateEnded) {
@@ -493,7 +495,7 @@ _messageLabel.hidden = YES;
         }        
     }
 }
-
+//
 - (void) handlePan: (UIPanGestureRecognizer *) sender
 {
     if (sender.state == UIGestureRecognizerStateEnded) {
@@ -570,7 +572,7 @@ _messageLabel.hidden = YES;
     self.playing = NO;
     _disableUpdateHUD = YES;
     [self enableAudio:NO];
-    
+    //同步视频当前时间
     dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, 0.1 * NSEC_PER_SEC);
     dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
 
