@@ -720,23 +720,25 @@ static int interrupt_callback(void *ctx);
 {
     NSAssert(path, @"nil path");
     NSAssert(!_formatCtx, @"already open");
-    
+    //先判断是不是网络流
     _isNetwork = isNetworkPath(path);
     
     static BOOL needNetworkInit = YES;
     if (needNetworkInit && _isNetwork) {
         
         needNetworkInit = NO;
+        //如果是网络流就需要先初始化
         avformat_network_init();
     }
     
     _path = path;
-    
+    //打开文件
     kxMovieError errCode = [self openInput: path];
     
     if (errCode == kxMovieErrorNone) {
-        
+        //打开视频流
         kxMovieError videoErr = [self openVideoStream];
+        //打开音频流
         kxMovieError audioErr = [self openAudioStream];
         
         _subtitleStream = -1;
@@ -774,18 +776,18 @@ static int interrupt_callback(void *ctx);
         formatCtx = avformat_alloc_context();
         if (!formatCtx)
             return kxMovieErrorOpenFile;
-        
+        //处理中断函数，第一个参数函数指针，指向一个函数
         AVIOInterruptCB cb = {interrupt_callback, (__bridge void *)(self)};
         formatCtx->interrupt_callback = cb;
     }
-    
+    //打开文件 url_open,url_read
     if (avformat_open_input(&formatCtx, [path cStringUsingEncoding: NSUTF8StringEncoding], NULL, NULL) < 0) {
         
         if (formatCtx)
             avformat_free_context(formatCtx);
         return kxMovieErrorOpenFile;
     }
-    
+    //读取视音频数据相关的信息 parser find_decoder  avcodec_open2 实现了解码器的查找，解码器的打开，视音频帧的读取，视音频帧的解码
     if (avformat_find_stream_info(formatCtx, NULL) < 0) {
         
         avformat_close_input(&formatCtx);
@@ -803,6 +805,7 @@ static int interrupt_callback(void *ctx);
     kxMovieError errCode = kxMovieErrorStreamNotFound;
     _videoStream = -1;
     _artworkStream = -1;
+    //收集视频流
     _videoStreams = collectStreams(_formatCtx, AVMEDIA_TYPE_VIDEO);
     for (NSNumber *n in _videoStreams) {
         
@@ -828,7 +831,7 @@ static int interrupt_callback(void *ctx);
     // get a pointer to the codec context for the video stream
     AVCodecContext *codecCtx = _formatCtx->streams[videoStream]->codec;
     
-    // find the decoder for the video stream
+    // find the decoder for the video stream 找到解码器 我这里是H264
     AVCodec *codec = avcodec_find_decoder(codecCtx->codec_id);
     if (!codec)
         return kxMovieErrorCodecNotFound;
@@ -838,10 +841,10 @@ static int interrupt_callback(void *ctx);
     //if(codec->capabilities & CODEC_CAP_TRUNCATED)
     //    _codecCtx->flags |= CODEC_FLAG_TRUNCATED;
     
-    // open codec
+    // open codec 打开解码器
     if (avcodec_open2(codecCtx, codec, NULL) < 0)
         return kxMovieErrorOpenCodec;
-        
+    //初始化一个视频帧 分配一次 存储原始数据对于视频就是YUV或者RGB
     _videoFrame = av_frame_alloc();
 
     if (!_videoFrame) {
@@ -853,8 +856,9 @@ static int interrupt_callback(void *ctx);
     _videoCodecCtx = codecCtx;
     
     // determine fps
-    
+    //AVStream 存储每一个视频/音频流信息的结构体 st
     AVStream *st = _formatCtx->streams[_videoStream];
+    //PTS*time_base=真正的时间
     avStreamFPSTimeBase(st, 0.04, &_fps, &_videoTimeBase);
     
     LoggerVideo(1, @"video codec size: %d:%d fps: %.3f tb: %f",
@@ -1119,17 +1123,18 @@ static int interrupt_callback(void *ctx);
     if (_videoFrameFormat == KxVideoFrameFormatYUV) {
             
         KxVideoFrameYUV * yuvFrame = [[KxVideoFrameYUV alloc] init];
-        
+        //将YUV分离出来w*h*3/2 Byte的数据
+        //Y 亮度  w*h Byte存储Y 拷贝一帧图片的数据
         yuvFrame.luma = copyFrameData(_videoFrame->data[0],
                                       _videoFrame->linesize[0],
                                       _videoCodecCtx->width,
                                       _videoCodecCtx->height);
-        
+        //U 色度 w*h*1/4 Byte存储U
         yuvFrame.chromaB = copyFrameData(_videoFrame->data[1],
                                          _videoFrame->linesize[1],
                                          _videoCodecCtx->width / 2,
                                          _videoCodecCtx->height / 2);
-        
+        //V 浓度 w*h*1/4 Byte存储V
         yuvFrame.chromaR = copyFrameData(_videoFrame->data[2],
                                          _videoFrame->linesize[2],
                                          _videoCodecCtx->width / 2,
@@ -1165,6 +1170,7 @@ static int interrupt_callback(void *ctx);
     
     frame.width = _videoCodecCtx->width;
     frame.height = _videoCodecCtx->height;
+    //_videoTimeBase = 0.001 当前的时间 = pts*_videoTimeBase,这个参数非常重要得到当前显示的时间在播放器中用在播放时间的显示。
     frame.position = av_frame_get_best_effort_timestamp(_videoFrame) * _videoTimeBase;
     
     const int64_t frameDuration = av_frame_get_pkt_duration(_videoFrame);
@@ -1181,6 +1187,7 @@ static int interrupt_callback(void *ctx);
         
         // sometimes, ffmpeg unable to determine a frame duration
         // as example yuvj420p stream from web camera
+        //得到了当前帧的需要显示的时长 比如我的推流端设置的帧率是25帧那么一帧需要显示的时长就是0.04s这个参数也很重要。
         frame.duration = 1.0 / _fps;
     }    
     

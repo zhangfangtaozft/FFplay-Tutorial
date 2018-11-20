@@ -148,10 +148,11 @@ static NSMutableDictionary * gHistory;
 }
 
 - (BOOL)prefersStatusBarHidden { return YES; }
-
+//打开流媒体文件
 + (id) movieViewControllerWithContentPath: (NSString *) path
                                parameters: (NSDictionary *) parameters
-{    
+{
+    //初始化音频
     id<KxAudioManager> audioManager = [KxAudioManager audioManager];
     [audioManager activateAudioSession];    
     return [[KxMovieViewController alloc] initWithContentPath: path parameters: parameters];
@@ -173,7 +174,7 @@ static NSMutableDictionary * gHistory;
         __weak KxMovieViewController *weakSelf = self;
         
         KxMovieDecoder *decoder = [[KxMovieDecoder alloc] init];
-        
+        //设置解码器中断回调
         decoder.interruptCallback = ^BOOL(){
             
             __strong KxMovieViewController *strongSelf = weakSelf;
@@ -535,10 +536,10 @@ _messageLabel.hidden = YES;
 #ifdef DEBUG
     _debugStartTime = -1;
 #endif
-
+//解码frame
     [self asyncDecodeFrames];
     [self updatePlayButton];
-
+//第一次定时(tick)：
     dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, 0.1 * NSEC_PER_SEC);
     dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
         [self tick];
@@ -936,7 +937,7 @@ _messageLabel.hidden = YES;
         audioManager.outputBlock = nil;
     }
 }
-
+//这个函数主要对_bufferedDuration(缓存时长)进行累加，以及对数据的保存都存放一个数组里面，最后面判断当前的缓存有没有超过最大的缓存。这样一个视频帧的解码以及的采集就完成，接着回去看主线程的显示。
 - (BOOL) addFrames: (NSArray *)frames
 {
     if (_decoder.validVideo) {
@@ -981,7 +982,7 @@ _messageLabel.hidden = YES;
                 }
         }
     }
-    
+    //最大缓存
     return self.playing && _bufferedDuration < _maxBufferedDuration;
 }
 
@@ -1050,9 +1051,11 @@ _messageLabel.hidden = YES;
         }
     });
 }
+//这个函数也就是延时操作，为什么这样做其实就是为了做开始加载的缓存，可以分析一下这里是0.1s后再去执行tick函数，在此之间已经解码几十帧数据了。接下来看tick函数:
 
 - (void) tick
 {
+    //缓存时长
     if (_buffered && ((_bufferedDuration > _minBufferedDuration) || _decoder.isEOF)) {
         
         _tickCorrectionTime = 0;
@@ -1061,15 +1064,18 @@ _messageLabel.hidden = YES;
     }
     
     CGFloat interval = 0;
+    //这里有个判断语句 _buffered表示是否需要缓存，如果数组里面有数据当然不需要缓存为NO否则为YES。_bufferedDuration > _minBufferedDuration判断是否大于最小的缓存这里是2s。分析一下，tick()是在开始解码后0.1s才开始调用_bufferedDuration是进行帧的duration进行累加的，一帧是0.04s要大于2s的缓存肯定至少要解码50帧才可以显示。但是_buffered初始化设置为No，所以第一次缓存帧数是定时0.1的数量。
     if (!_buffered)
+        //显示一帧
         interval = [self presentFrame];
     
     if (self.playing) {
-        
+        //还有可显示的音视频帧
         const NSUInteger leftFrames =
         (_decoder.validVideo ? _videoFrames.count : 0) +
         (_decoder.validAudio ? _audioFrames.count : 0);
-        
+        //如果没有需要显示的数据
+        //当显示数据的数组里面没有数据了，自然就要等待，进行缓存，此时_minBufferedDuration肯定为0了，因为每显示一帧数据都要减去这一帧的duration，等数据都显示完了自然也就为0，将_buffered置为YES。这时不会调用presentFrame而且必须要等到_bufferedDuration > _minBufferedDuration才开始显示。后面的OpenGLES显示就不写了，到此kxmovie的解码显示过程基本上也写清楚了。
         if (0 == leftFrames) {
             
             if (_decoder.isEOF) {
@@ -1078,10 +1084,11 @@ _messageLabel.hidden = YES;
                 [self updateHUD];
                 return;
             }
-            
+         //确认缓存里面是否还有数据
             if (_minBufferedDuration > 0 && !_buffered) {
                                 
                 _buffered = YES;
+                //开始转
                 [_activityIndicatorView startAnimating];
             }
         }
@@ -1115,6 +1122,7 @@ _messageLabel.hidden = YES;
     if (!_tickCorrectionTime) {
         
         _tickCorrectionTime = now;
+        //播放的位置 就是现在播的的时间
         _tickCorrectionPosition = _moviePosition;
         return 0;
     }
